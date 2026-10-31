@@ -71,3 +71,80 @@ export function deleteEvent(eventId) {
     method: "DELETE",
   });
 }
+
+
+export function createPresignedUpload({
+  eventId,
+  fileName,
+  contentType,
+  fileSize,
+}) {
+  return request("/uploads/presign", {
+    method: "POST",
+    body: JSON.stringify({
+      eventId,
+      fileName,
+      contentType,
+      fileSize,
+    }),
+  });
+}
+
+export function completeFileUpload({
+  eventId,
+  objectKey,
+  fileName,
+  contentType,
+  fileSize,
+}) {
+  return request("/uploads/complete", {
+    method: "POST",
+    body: JSON.stringify({
+      eventId,
+      objectKey,
+      fileName,
+      contentType,
+      fileSize,
+    }),
+  });
+}
+
+export async function uploadFileToS3(file, uploadUrl) {
+  if (file.size > 10 * 1024 * 1024) {
+    throw new Error("File size must not exceed 10 MB.");
+  }
+
+  if (file.size === 0) {
+    throw new Error("Please select a non-empty file.");
+  }
+
+  const result = await fetch(uploadUrl, {
+    method: "PUT",
+    headers: {
+      "Content-Type": file.type,
+    },
+    body: file,
+  });
+
+  if (!result.ok) {
+    throw new Error("Upload failed. Please try again.");
+  }
+
+  return true;
+}
+
+export function getEventAttachments(eventId) {
+  return request(
+    `/events/${encodeURIComponent(eventId)}/attachments`
+  );
+}
+
+export function getAttachmentViewUrl(eventId, attachmentId, download = false) {
+  const params = new URLSearchParams({
+    eventId,
+    attachmentId,
+    download: String(download),
+  });
+
+  return request(`/uploads/view?${params.toString()}`);
+}

@@ -1,17 +1,34 @@
 
 import { useEffect, useState } from "react";
-import { getEvents, createEvent } from "./api";
+import {
+  getEvents,
+  createEvent,
+  createPresignedUpload,
+  uploadFileToS3,
+  completeFileUpload,
+  getEventAttachments,
+  getAttachmentViewUrl,
+} from "./api";
+
 import "./App.css";
 
 
 function App() {
-    const [events, setEvents] = useState([]);
+  const [events, setEvents] = useState([]);
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadMessage, setUploadMessage] = useState("");
+  const [uploadError, setUploadError] = useState("");
+  const [uploadedFiles, setUploadedFiles] = useState({});
+
+  const [attachmentsLoading, setAttachmentsLoading] = useState(false);
 
   const [form, setForm] = useState({
     name: "",
@@ -45,11 +62,83 @@ function App() {
     loadEvents();
   }, []);
 
+  useEffect(() => {
+    if (!selectedEvent?.eventId) return;
+
+    let cancelled = false;
+
+    async function loadAttachments() {
+      try {
+        setAttachmentsLoading(true);
+        setUploadError("");
+
+        const data = await getEventAttachments(selectedEvent.eventId);
+
+        if (!cancelled) {
+          const files = await Promise.all(
+            data.map(async (file) => {
+              let previewUrl = null;
+
+              if (
+                file.contentType?.startsWith("image/") ||
+                file.contentType?.startsWith("video/") ||
+                file.contentType === "application/pdf"
+              ) {
+                try {
+                  const result = await getAttachmentViewUrl(
+                    selectedEvent.eventId,
+                    file.attachmentId,
+                    false
+                  );
+
+                  previewUrl = result.viewUrl;
+                } catch (err) {
+                  console.error("Unable to load image preview:", err);
+                }
+              }
+
+              return {
+                attachmentId: file.attachmentId,
+                name: file.fileName,
+                type: file.contentType,
+                objectKey: file.objectKey,
+                fileSize: file.fileSize,
+                uploadedAt: file.uploadedAt,
+                previewUrl,
+              };
+            })
+          );
+
+          setUploadedFiles((previous) => ({
+            ...previous,
+            [selectedEvent.eventId]: files,
+          }));
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setUploadError(
+            err.message || "Unable to load uploaded files."
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setAttachmentsLoading(false);
+        }
+      }
+    }
+
+    loadAttachments();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedEvent?.eventId]);
+
   const filteredEvents = events.filter((event) =>
     event.name.toLowerCase().includes(search.toLowerCase())
   );
 
-    async function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
 
     try {
@@ -85,6 +174,120 @@ function App() {
       setError(err.message || "Unable to create the event.");
     } finally {
       setSaving(false);
+    }
+  }
+
+
+
+  async function handleFileUpload() {
+    if (!selectedEvent || !selectedFile) {
+      setUploadError("Please select a file first.");
+      return;
+    }
+
+    try {
+      setUploading(true);
+      setUploadError("");
+      setUploadMessage("");
+
+      // Step 1: Request a presigned URL from Lambda.
+      const { uploadUrl, objectKey } = await createPresignedUpload({
+        eventId: selectedEvent.eventId,
+        fileName: selectedFile.name,
+        contentType: selectedFile.type,
+        fileSize: selectedFile.size,
+      });
+
+      // Step 2: Upload the actual file to S3.
+      await uploadFileToS3(selectedFile, uploadUrl);
+
+      // Step 3: Save attachment metadata in DynamoDB.
+      const result = await completeFileUpload({
+        eventId: selectedEvent.eventId,
+        objectKey,
+        fileName: selectedFile.name,
+        contentType: selectedFile.type,
+        fileSize: selectedFile.size,
+      });
+
+      // Step 4: Prepare the attachment for the frontend.
+      const attachment = {
+        attachmentId: result.attachment.attachmentId,
+        name: result.attachment.fileName,
+        type: result.attachment.contentType,
+        objectKey: result.attachment.objectKey,
+        fileSize: result.attachment.fileSize,
+        previewUrl: null,
+      };
+
+      // Step 5: Generate a preview URL for images.
+      if (
+        attachment.type.startsWith("image/") ||
+        attachment.type.startsWith("video/") ||
+        attachment.type === "application/pdf"
+      ) {
+        try {
+          const preview = await getAttachmentViewUrl(
+            selectedEvent.eventId,
+            attachment.attachmentId,
+            false
+          );
+
+          attachment.previewUrl = preview.viewUrl;
+        } catch (err) {
+          console.error("Image preview unavailable:", err);
+        }
+      }
+
+      // Step 6: Update the uploaded files list.
+      setUploadedFiles((previous) => ({
+        ...previous,
+        [selectedEvent.eventId]: [
+          ...(previous[selectedEvent.eventId] || []),
+          attachment,
+        ],
+      }));
+
+      setUploadMessage("File uploaded and saved successfully!");
+      setSelectedFile(null);
+
+    } catch (err) {
+      setUploadError(err.message || "Unable to upload the file.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+
+  async function handleViewFile(file) {
+    try {
+      setUploadError("");
+
+      const result = await getAttachmentViewUrl(
+        selectedEvent.eventId,
+        file.attachmentId,
+        false
+      );
+
+      window.open(result.viewUrl, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      setUploadError(err.message || "Unable to open the file.");
+    }
+  }
+
+  async function handleDownloadFile(file) {
+    try {
+      setUploadError("");
+
+      const result = await getAttachmentViewUrl(
+        selectedEvent.eventId,
+        file.attachmentId,
+        true
+      );
+
+      window.open(result.viewUrl, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      setUploadError(err.message || "Unable to download the file.");
     }
   }
 
@@ -130,7 +333,7 @@ function App() {
             {error}
           </p>
         )}
-        
+
         <header className="topbar">
           <div className="breadcrumb">Workspace / Dashboard</div>
           <div className="profile">
@@ -204,6 +407,101 @@ function App() {
             <p className="event-date">{selectedEvent.date || "Date not set"}</p>
             <p>{selectedEvent.description || "No description added yet."}</p>
 
+
+            <div className="upload-section">
+              <h3>Add photos, videos or documents</h3>
+              <p>Choose a file up to 10 MB.</p>
+
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp,video/mp4,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                onChange={(e) => {
+                  setSelectedFile(e.target.files?.[0] || null);
+                  setUploadError("");
+                  setUploadMessage("");
+                }}
+              />
+
+              <button
+                type="button"
+                className="primary-button"
+                onClick={handleFileUpload}
+                disabled={!selectedFile || uploading}
+              >
+                {uploading ? "Uploading..." : "Upload file"}
+              </button>
+
+              {uploadMessage && <p role="status">{uploadMessage}</p>}
+              {uploadError && (
+                <p role="alert" style={{ color: "crimson" }}>
+                  {uploadError}
+                </p>
+              )}
+
+              <h3>Uploaded files</h3>
+
+              {attachmentsLoading ? (
+                <p>Loading your uploaded files...</p>
+              ) : (uploadedFiles[selectedEvent.eventId] || []).length === 0 ? (
+                <p>No files uploaded for this event yet.</p>
+              ) : (
+                <div className="uploaded-files-grid">
+                  {(uploadedFiles[selectedEvent.eventId] || []).map((file) => (
+                    <div className="uploaded-file-card" key={file.objectKey}>
+
+
+                      {file.type?.startsWith("image/") && file.previewUrl ? (
+                        <img
+                          src={file.previewUrl}
+                          alt={file.name}
+                          className="uploaded-image-thumbnail"
+                          onClick={() => handleViewFile(file)}
+                        />
+                      ) : file.type?.startsWith("video/") && file.previewUrl ? (
+                        <video
+                          src={file.previewUrl}
+                          className="uploaded-video-thumbnail"
+                          controls
+                          preload="metadata"
+                        />
+                      ) : file.type === "application/pdf" && file.previewUrl ? (
+                        <iframe
+                          src={file.previewUrl}
+                          title={file.name}
+                          className="uploaded-pdf-preview"
+                        />
+                      ) : (
+                        <div className="uploaded-file-placeholder">
+                          {file.type?.startsWith("video/") ? "▶" :
+                            file.type === "application/pdf" ? "PDF" : "▤"}
+                        </div>
+                      )}
+
+
+                      <strong>{file.name}</strong>
+
+                      <div className="uploaded-file-actions">
+                        <button
+                          type="button"
+                          onClick={() => handleViewFile(file)}
+                        >
+                          View
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDownloadFile(file)}
+                        >
+                          Download
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+
             <div className="empty-memories">
               <div className="empty-icon">▧</div>
               <h3>Your memories will live here</h3>
@@ -244,8 +542,8 @@ function App() {
                       {event.category === "College"
                         ? "✳"
                         : event.category === "Birthday"
-                        ? "✦"
-                        : "❋"}
+                          ? "✦"
+                          : "❋"}
                     </span>
                     <span className="category-tag">
                       {event.category}
