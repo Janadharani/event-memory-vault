@@ -1,22 +1,414 @@
-
 import { useEffect, useState } from "react";
+
 import {
   getEvents,
   createEvent,
+  updateEvent,
+  deleteEvent,
   createPresignedUpload,
   uploadFileToS3,
   completeFileUpload,
   getEventAttachments,
   getAttachmentViewUrl,
+  getEventMemories,
+  createEventMemory,
+  updateEventMemory,
+  deleteEventMemory,
+  deleteEventAttachment,
+  enableEventSharing,
+  disableEventSharing,
+  getSharedEvent,
 } from "./api";
 
 import "./App.css";
 
+function SharedEventPage({ shareToken }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [selectedImage, setSelectedImage] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSharedEvent() {
+      try {
+        setLoading(true);
+        setError("");
+
+        const result = await getSharedEvent(shareToken);
+
+        if (!cancelled) {
+          setData(result);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err.message || "This shared event is unavailable.");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadSharedEvent();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [shareToken]);
+
+  if (loading) {
+    return (
+      <main className="shared-event-page shared-loading">
+        <div className="shared-loader">M</div>
+        <h2>Opening shared memories...</h2>
+        <p>Getting everything ready for you.</p>
+      </main>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <main className="shared-event-page shared-error-page">
+        <div className="shared-error-icon">♡</div>
+        <h1>Unable to open this event</h1>
+        <p>
+          {error ||
+            "This sharing link may have expired or been disabled."}
+        </p>
+        <span>Event Memory Vault</span>
+      </main>
+    );
+  }
+
+  const event = data.event || {};
+  const memories = data.memories || [];
+  const attachments = data.attachments || [];
+
+  const getFileUrl = (file) =>
+    file.viewUrl || file.previewUrl || file.url || "";
+
+  const getFileName = (file) =>
+    file.fileName || file.name || "Attachment";
+
+  const getFileType = (file) =>
+    file.contentType || file.type || "";
+
+  const images = attachments.filter(
+    (file) => getFileType(file).startsWith("image/")
+  );
+
+  const videos = attachments.filter(
+    (file) => getFileType(file).startsWith("video/")
+  );
+
+  const documents = attachments.filter(
+    (file) => !getFileType(file).startsWith("image/") &&
+      !getFileType(file).startsWith("video/")
+  );
+
+  return (
+    <main className="shared-event-page">
+      <header className="shared-event-header">
+        <a href="/" className="shared-brand">
+          <span className="brand-icon">M</span>
+          <span>MemoryVault</span>
+        </a>
+
+        <span className="shared-view-label">
+          <span className="shared-status-dot"></span>
+          Shared with you · View only
+        </span>
+      </header>
+
+      <div className="shared-event-content">
+        <section className="shared-hero">
+          <div className="shared-hero-decoration">✦</div>
+
+          <span className="shared-eyebrow">
+            A COLLECTION OF SPECIAL MOMENTS
+          </span>
+
+          <span className="category-tag">
+            {event.category || "Personal"}
+          </span>
+
+          <h1>{event.title || event.name || "Shared event"}</h1>
+
+          <p className="shared-event-date">
+            <span>◷</span> {event.date || "Date not set"}
+          </p>
+
+          <p className="shared-event-description">
+            {event.description || "A collection of moments worth remembering."}
+          </p>
+
+          <div className="shared-hero-line"></div>
+
+          <p className="shared-hero-caption">
+            Some moments deserve to be remembered forever.
+          </p>
+        </section>
+
+        <section className="shared-summary">
+          <div>
+            <strong>{images.length}</strong>
+            <span>Photos</span>
+          </div>
+          <div>
+            <strong>{videos.length}</strong>
+            <span>Videos</span>
+          </div>
+          <div>
+            <strong>{documents.length}</strong>
+            <span>Documents</span>
+          </div>
+          <div>
+            <strong>{memories.length}</strong>
+            <span>Written memories</span>
+          </div>
+        </section>
+
+        {attachments.length === 0 && memories.length === 0 ? (
+          <section className="shared-empty">
+            <div>♡</div>
+            <h2>This collection is waiting for memories</h2>
+            <p>No photos, videos, documents or written memories have been shared yet.</p>
+          </section>
+        ) : (
+          <>
+            {images.length > 0 && (
+              <section className="shared-section">
+                <div className="shared-section-heading">
+                  <div>
+                    <span className="shared-section-kicker">CAPTURED MOMENTS</span>
+                    <h2>Photo gallery</h2>
+                    <p>A glimpse of the moments that made this event special.</p>
+                  </div>
+                  <span className="shared-count">{images.length} photos</span>
+                </div>
+
+                <div className="shared-photo-grid">
+                  {images.map((file, index) => {
+                    const url = getFileUrl(file);
+                    const name = getFileName(file);
+
+                    return (
+                      <button
+                        type="button"
+                        className="shared-photo-card"
+                        key={file.attachmentId || file.objectKey || index}
+                        onClick={() => url && setSelectedImage({ url, name })}
+                        disabled={!url}
+                        aria-label={`View ${name}`}
+                      >
+                        {url ? (
+                          <img src={url} alt={name} loading="lazy" />
+                        ) : (
+                          <span className="shared-file-placeholder">Image unavailable</span>
+                        )}
+                        <span className="shared-photo-caption">{name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
+            {videos.length > 0 && (
+              <section className="shared-section">
+                <div className="shared-section-heading">
+                  <div>
+                    <span className="shared-section-kicker">MOMENTS IN MOTION</span>
+                    <h2>Videos</h2>
+                    <p>Watch the moments unfold again.</p>
+                  </div>
+                  <span className="shared-count">{videos.length} videos</span>
+                </div>
+
+                <div className="shared-video-grid">
+                  {videos.map((file, index) => {
+                    const url = getFileUrl(file);
+                    const name = getFileName(file);
+
+                    return (
+                      <article
+                        className="shared-video-card"
+                        key={file.attachmentId || file.objectKey || index}
+                      >
+                        {url ? (
+                          <video
+                            src={url}
+                            controls
+                            preload="metadata"
+                          />
+                        ) : (
+                          <div className="shared-file-placeholder">
+                            Video unavailable
+                          </div>
+                        )}
+                        <p>{name}</p>
+                      </article>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
+            {documents.length > 0 && (
+              <section className="shared-section">
+                <div className="shared-section-heading">
+                  <div>
+                    <span className="shared-section-kicker">KEEPSAKES</span>
+                    <h2>Documents</h2>
+                    <p>Files and documents saved with this event.</p>
+                  </div>
+                  <span className="shared-count">{documents.length} files</span>
+                </div>
+
+                <div className="shared-document-list">
+                  {documents.map((file, index) => {
+                    const url = getFileUrl(file);
+                    const name = getFileName(file);
+                    const type = getFileType(file);
+                    const isPdf = type === "application/pdf";
+
+                    return (
+                      <article
+                        className="shared-document-card"
+                        key={file.attachmentId || file.objectKey || index}
+                      >
+                        <div className="shared-document-icon">
+                          {isPdf ? "PDF" : "FILE"}
+                        </div>
+
+                        <div className="shared-document-info">
+                          <strong>{name}</strong>
+                          <span>{isPdf ? "PDF document" : "Shared document"}</span>
+                        </div>
+
+                        {url && (
+                          <a
+                            href={url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="shared-document-link"
+                          >
+                            View / Download ↗
+                          </a>
+                        )}
+                      </article>
+                    );
+                  })}
+                </div>
+
+                {documents.some(
+                  (file) =>
+                    getFileType(file) === "application/pdf" && getFileUrl(file)
+                ) && (
+                  <div className="shared-pdf-previews">
+                    {documents
+                      .filter(
+                        (file) =>
+                          getFileType(file) === "application/pdf" &&
+                          getFileUrl(file)
+                      )
+                      .map((file, index) => (
+                        <details
+                          className="shared-pdf-details"
+                          key={file.attachmentId || file.objectKey || index}
+                        >
+                          <summary>Preview: {getFileName(file)}</summary>
+                          <iframe
+                            src={getFileUrl(file)}
+                            title={getFileName(file)}
+                            className="shared-pdf-preview"
+                          />
+                        </details>
+                      ))}
+                  </div>
+                )}
+              </section>
+            )}
+
+            {memories.length > 0 && (
+              <section className="shared-section">
+                <div className="shared-section-heading">
+                  <div>
+                    <span className="shared-section-kicker">THE STORIES BEHIND IT</span>
+                    <h2>Written memories</h2>
+                    <p>Words that bring these moments back to life.</p>
+                  </div>
+                  <span className="shared-count">
+                    {memories.length} memories
+                  </span>
+                </div>
+
+                <div className="shared-memory-grid">
+                  {memories.map((memory, index) => (
+                    <article
+                      className="shared-memory-card"
+                      key={memory.memoryId || index}
+                    >
+                      <div className="shared-memory-quote">“</div>
+                      <h3>{memory.title || "A special memory"}</h3>
+                      <p>{memory.content || ""}</p>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            )}
+          </>
+        )}
+
+        <section className="shared-closing">
+          <div>♡</div>
+          <h2>Memories make moments last forever.</h2>
+          <p>Thank you for being part of this collection.</p>
+        </section>
+      </div>
+
+      <footer className="shared-footer">
+        <span className="brand-icon">M</span>
+        <p>Made with care using Event Memory Vault.</p>
+        <span>Shared privately · View only</span>
+      </footer>
+
+      {selectedImage && (
+        <div
+          className="shared-image-lightbox"
+          onClick={() => setSelectedImage(null)}
+          role="presentation"
+        >
+          <button
+            type="button"
+            className="shared-lightbox-close"
+            onClick={() => setSelectedImage(null)}
+            aria-label="Close image"
+          >
+            ×
+          </button>
+
+          <img
+            src={selectedImage.url}
+            alt={selectedImage.name}
+            onClick={(e) => e.stopPropagation()}
+          />
+
+          <p>{selectedImage.name}</p>
+        </div>
+      )}
+    </main>
+  );
+}
 
 function App() {
   const [events, setEvents] = useState([]);
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [editingEventId, setEditingEventId] = useState(null);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -29,6 +421,26 @@ function App() {
   const [uploadedFiles, setUploadedFiles] = useState({});
 
   const [attachmentsLoading, setAttachmentsLoading] = useState(false);
+  const [fileFilter, setFileFilter] = useState("all");
+
+  // Written memories
+  const [writtenMemories, setWrittenMemories] = useState({});
+  const [memoriesLoading, setMemoriesLoading] = useState(false);
+  const [memorySaving, setMemorySaving] = useState(false);
+  const [memoryError, setMemoryError] = useState("");
+  const [memoryMessage, setMemoryMessage] = useState("");
+  const [showMemoryForm, setShowMemoryForm] = useState(false);
+  const [editingMemoryId, setEditingMemoryId] = useState(null);
+
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareMessage, setShareMessage] = useState("");
+  const [shareError, setShareError] = useState("");
+  const [shareUrl, setShareUrl] = useState("");
+
+  const [memoryForm, setMemoryForm] = useState({
+    title: "",
+    content: "",
+  });
 
   const [form, setForm] = useState({
     name: "",
@@ -43,13 +455,29 @@ function App() {
         setError("");
         const data = await getEvents();
 
-        const mappedEvents = data.map((event) => ({
-          ...event,
-          id: event.eventId,
-          name: event.title,
-          category: event.category || "Personal",
-          memories: 0,
-        }));
+        const mappedEvents = await Promise.all(
+          data.map(async (event) => {
+            let memoryCount = 0;
+
+            try {
+              const memories = await getEventMemories(event.eventId);
+              memoryCount = memories.length;
+            } catch (err) {
+              console.error(
+                `Unable to load memory count for ${event.title}:`,
+                err
+              );
+            }
+
+            return {
+              ...event,
+              id: event.eventId,
+              name: event.title,
+              category: event.category || "Personal",
+              memories: memoryCount,
+            };
+          })
+        );
 
         setEvents(mappedEvents);
       } catch (err) {
@@ -134,9 +562,72 @@ function App() {
     };
   }, [selectedEvent?.eventId]);
 
+  // Load written memories whenever an event is selected.
+  useEffect(() => {
+    if (!selectedEvent?.eventId) return;
+
+    let cancelled = false;
+
+    async function loadMemories() {
+      try {
+        setMemoriesLoading(true);
+        setMemoryError("");
+        setMemoryMessage("");
+
+        const data = await getEventMemories(selectedEvent.eventId);
+
+        if (!cancelled) {
+          setWrittenMemories((previous) => ({
+            ...previous,
+            [selectedEvent.eventId]: data,
+          }));
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setMemoryError(err.message || "Unable to load written memories.");
+        }
+      } finally {
+        if (!cancelled) {
+          setMemoriesLoading(false);
+        }
+      }
+    }
+
+    loadMemories();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedEvent?.eventId]);
+
   const filteredEvents = events.filter((event) =>
     event.name.toLowerCase().includes(search.toLowerCase())
   );
+
+  const currentFiles = uploadedFiles[selectedEvent?.eventId] || [];
+
+  const filteredUploadedFiles = currentFiles.filter((file) => {
+    if (fileFilter === "all") return true;
+
+    if (fileFilter === "images") {
+      return file.type?.startsWith("image/");
+    }
+
+    if (fileFilter === "videos") {
+      return file.type?.startsWith("video/");
+    }
+
+    if (fileFilter === "documents") {
+      return (
+        file.type === "application/pdf" ||
+        file.type === "text/plain" ||
+        file.type ===
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      );
+    }
+
+    return true;
+  });
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -145,23 +636,62 @@ function App() {
       setSaving(true);
       setError("");
 
-      const savedEvent = await createEvent({
-        title: form.name,
-        date: form.date,
-        category: form.category,
-        description: form.description,
-      });
+      if (editingEventId) {
+        // Update an existing event
+        const updatedEvent = await updateEvent(editingEventId, {
+          title: form.name,
+          date: form.date,
+          category: form.category,
+          description: form.description,
+        });
 
-      const newEvent = {
-        ...savedEvent,
-        id: savedEvent.eventId,
-        name: savedEvent.title,
-        category: savedEvent.category || "Personal",
-        memories: 0,
-      };
+        setEvents((previous) =>
+          previous.map((event) =>
+            event.eventId === editingEventId
+              ? {
+                ...event,
+                ...updatedEvent,
+                id: updatedEvent.eventId,
+                name: updatedEvent.title,
+                category: updatedEvent.category || "Personal",
+              }
+              : event
+          )
+        );
 
-      setEvents((previous) => [newEvent, ...previous]);
+        // Keep the selected event details updated.
+        setSelectedEvent((previous) =>
+          previous?.eventId === editingEventId
+            ? {
+              ...previous,
+              ...updatedEvent,
+              id: updatedEvent.eventId,
+              name: updatedEvent.title,
+              category: updatedEvent.category || "Personal",
+            }
+            : previous
+        );
+      } else {
+        // Create a new event
+        const savedEvent = await createEvent({
+          title: form.name,
+          date: form.date,
+          category: form.category,
+          description: form.description,
+        });
 
+        const newEvent = {
+          ...savedEvent,
+          id: savedEvent.eventId,
+          name: savedEvent.title,
+          category: savedEvent.category || "Personal",
+          memories: 0,
+        };
+
+        setEvents((previous) => [newEvent, ...previous]);
+      }
+
+      // Reset form
       setForm({
         name: "",
         date: "",
@@ -169,11 +699,64 @@ function App() {
         description: "",
       });
 
+      setEditingEventId(null);
       setShowForm(false);
+
     } catch (err) {
-      setError(err.message || "Unable to create the event.");
+      setError(
+        err.message || "Unable to save the event."
+      );
     } finally {
       setSaving(false);
+    }
+  }
+
+  function openEditEvent(event) {
+    setEditingEventId(event.eventId);
+
+    setForm({
+      name: event.name,
+      date: event.date || "",
+      category: event.category || "Personal",
+      description: event.description || "",
+    });
+
+    setShowForm(true);
+  }
+
+  async function handleDeleteEvent(event) {
+    const confirmed = window.confirm(
+      `Are you sure you want to delete "${event.name}"?`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      await deleteEvent(event.eventId);
+
+      setEvents((previous) =>
+        previous.filter((item) => item.eventId !== event.eventId)
+      );
+
+      setUploadedFiles((previous) => {
+        const updated = { ...previous };
+        delete updated[event.eventId];
+        return updated;
+      });
+
+      setWrittenMemories((previous) => {
+        const updated = { ...previous };
+        delete updated[event.eventId];
+        return updated;
+      });
+
+      if (selectedEvent?.eventId === event.eventId) {
+        setSelectedEvent(null);
+      }
+
+      alert("Event deleted successfully!");
+    } catch (err) {
+      alert(err.message || "Unable to delete the event.");
     }
   }
 
@@ -291,6 +874,276 @@ function App() {
     }
   }
 
+  function openMemoryForm(memory = null) {
+    setMemoryError("");
+    setMemoryMessage("");
+
+    if (memory) {
+      setEditingMemoryId(memory.memoryId);
+      setMemoryForm({
+        title: memory.title,
+        content: memory.content,
+      });
+    } else {
+      setEditingMemoryId(null);
+      setMemoryForm({
+        title: "",
+        content: "",
+      });
+    }
+
+    setShowMemoryForm(true);
+  }
+
+  async function handleMemorySubmit(e) {
+    e.preventDefault();
+
+    if (!selectedEvent) return;
+
+    try {
+      setMemorySaving(true);
+      setMemoryError("");
+      setMemoryMessage("");
+
+      let savedMemory;
+
+      if (editingMemoryId) {
+        const result = await updateEventMemory(
+          selectedEvent.eventId,
+          editingMemoryId,
+          memoryForm
+        );
+
+        savedMemory = result.memory;
+
+        setWrittenMemories((previous) => ({
+          ...previous,
+          [selectedEvent.eventId]: (
+            previous[selectedEvent.eventId] || []
+          ).map((memory) =>
+            memory.memoryId === editingMemoryId
+              ? savedMemory
+              : memory
+          ),
+        }));
+
+        setMemoryMessage("Written memory updated successfully!");
+      } else {
+        const result = await createEventMemory(
+          selectedEvent.eventId,
+          memoryForm
+        );
+
+        savedMemory = result.memory;
+
+        setWrittenMemories((previous) => ({
+          ...previous,
+          [selectedEvent.eventId]: [
+            savedMemory,
+            ...(previous[selectedEvent.eventId] || []),
+          ],
+        }));
+
+        // Update the memory count for this event
+        setEvents((previous) =>
+          previous.map((event) =>
+            event.eventId === selectedEvent.eventId
+              ? { ...event, memories: (event.memories || 0) + 1 }
+              : event
+          )
+        );
+
+        setMemoryMessage("Written memory saved successfully!");
+      }
+
+      setShowMemoryForm(false);
+      setEditingMemoryId(null);
+      setMemoryForm({ title: "", content: "" });
+    } catch (err) {
+      setMemoryError(err.message || "Unable to save the written memory.");
+    } finally {
+      setMemorySaving(false);
+    }
+  }
+
+  async function handleDeleteAttachment(attachment) {
+    if (!selectedEvent) return;
+
+    const confirmed = window.confirm(
+      `Are you sure you want to delete "${attachment.name}"? This will permanently remove the file.`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setUploadError("");
+      setUploadMessage("");
+
+      await deleteEventAttachment(
+        selectedEvent.eventId,
+        attachment.attachmentId
+      );
+
+      setUploadedFiles((previous) => ({
+        ...previous,
+        [selectedEvent.eventId]: (
+          previous[selectedEvent.eventId] || []
+        ).filter(
+          (file) => file.attachmentId !== attachment.attachmentId
+        ),
+      }));
+
+      setUploadMessage("File deleted successfully!");
+    } catch (err) {
+      console.error("Attachment deletion failed:", err);
+      setUploadError(err.message || "Unable to delete the file.");
+    }
+  }
+
+  async function handleDeleteMemory(memoryId) {
+    if (!selectedEvent) return;
+
+    const confirmed = window.confirm(
+      "Are you sure you want to delete this written memory?"
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setMemoryError("");
+      setMemoryMessage("");
+
+      await deleteEventMemory(selectedEvent.eventId, memoryId);
+
+      setWrittenMemories((previous) => ({
+        ...previous,
+        [selectedEvent.eventId]: (
+          previous[selectedEvent.eventId] || []
+        ).filter((memory) => memory.memoryId !== memoryId),
+      }));
+
+      setEvents((previous) =>
+        previous.map((event) =>
+          event.eventId === selectedEvent.eventId
+            ? {
+              ...event,
+              memories: Math.max(0, (event.memories || 0) - 1),
+            }
+            : event
+        )
+      );
+
+      setMemoryMessage("Written memory deleted successfully!");
+    } catch (err) {
+      setMemoryError(err.message || "Unable to delete the written memory.");
+    }
+  }
+
+  async function handleEnableSharing() {
+    if (!selectedEvent) return;
+
+    try {
+      setShareLoading(true);
+      setShareError("");
+      setShareMessage("");
+
+      const result = await enableEventSharing(selectedEvent.eventId);
+
+      const token =
+        result.shareToken ||
+        result.token ||
+        result.shareUrl?.split("/").filter(Boolean).pop();
+
+      if (!token) {
+        throw new Error("The API did not return a share token.");
+      }
+
+      const publicUrl = `${window.location.origin}/shared/${token}`;
+
+      setShareUrl(publicUrl);
+      setShareMessage("Sharing link created successfully!");
+
+      setSelectedEvent((previous) => ({
+        ...previous,
+        shareEnabled: true,
+        shareToken: token,
+      }));
+
+      setEvents((previous) =>
+        previous.map((event) =>
+          event.eventId === selectedEvent.eventId
+            ? { ...event, shareEnabled: true, shareToken: token }
+            : event
+        )
+      );
+    } catch (err) {
+      setShareError(err.message || "Unable to create the sharing link.");
+    } finally {
+      setShareLoading(false);
+    }
+  }
+
+  async function handleDisableSharing() {
+    if (!selectedEvent) return;
+
+    const confirmed = window.confirm(
+      "Disable this sharing link? Anyone using the link will no longer be able to view this event."
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setShareLoading(true);
+      setShareError("");
+      setShareMessage("");
+
+      await disableEventSharing(selectedEvent.eventId);
+
+      setShareUrl("");
+
+      setSelectedEvent((previous) => ({
+        ...previous,
+        shareEnabled: false,
+        shareToken: null,
+      }));
+
+      setEvents((previous) =>
+        previous.map((event) =>
+          event.eventId === selectedEvent.eventId
+            ? { ...event, shareEnabled: false, shareToken: null }
+            : event
+        )
+      );
+
+      setShareMessage("Sharing has been disabled.");
+    } catch (err) {
+      setShareError(err.message || "Unable to disable sharing.");
+    } finally {
+      setShareLoading(false);
+    }
+  }
+
+  async function handleCopyShareLink() {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setShareMessage("Sharing link copied!");
+    } catch {
+      setShareError("Unable to copy the link. You can copy it manually.");
+    }
+  }
+
+  const sharedPathMatch = window.location.pathname.match(
+    /^\/shared\/([^/]+)\/?$/
+  );
+
+  if (sharedPathMatch) {
+    return (
+      <SharedEventPage
+        shareToken={decodeURIComponent(sharedPathMatch[1])}
+      />
+    );
+  }
+
   return (
     <div className="app">
       <aside className="sidebar">
@@ -354,7 +1207,16 @@ function App() {
 
           <button
             className="primary-button"
-            onClick={() => setShowForm(true)}
+            onClick={() => {
+              setEditingEventId(null);
+              setForm({
+                name: "",
+                date: "",
+                category: "Personal",
+                description: "",
+              });
+              setShowForm(true);
+            }}
           >
             <span>＋</span> Create event
           </button>
@@ -407,6 +1269,62 @@ function App() {
             <p className="event-date">{selectedEvent.date || "Date not set"}</p>
             <p>{selectedEvent.description || "No description added yet."}</p>
 
+            <div className="event-sharing-section">
+              <h3>Share this event</h3>
+              <p>
+                Let friends and family view this event, including its memories and
+                uploaded files.
+              </p>
+
+              {selectedEvent.shareEnabled && shareUrl ? (
+                <>
+                  <p>Sharing is enabled.</p>
+
+                  <input
+                    type="text"
+                    readOnly
+                    value={shareUrl}
+                    onFocus={(e) => e.target.select()}
+                  />
+
+                  <div className="uploaded-file-actions">
+                    <button
+                      type="button"
+                      onClick={handleCopyShareLink}
+                    >
+                      Copy link
+                    </button>
+
+                    <button
+                      type="button"
+                      className="delete-file-btn"
+                      onClick={handleDisableSharing}
+                      disabled={shareLoading}
+                    >
+                      Disable sharing
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={handleEnableSharing}
+                  disabled={shareLoading}
+                >
+                  {shareLoading ? "Please wait..." : "Create sharing link"}
+                </button>
+              )}
+
+              {shareMessage && <p role="status">{shareMessage}</p>}
+
+              {shareError && (
+                <p role="alert" style={{ color: "crimson" }}>
+                  {shareError}
+                </p>
+              )}
+            </div>
+
 
             <div className="upload-section">
               <h3>Add photos, videos or documents</h3>
@@ -438,15 +1356,54 @@ function App() {
                 </p>
               )}
 
-              <h3>Uploaded files</h3>
+              <div className="media-heading">
+                <h3>Uploaded files</h3>
 
+                <div className="media-filters">
+                  <button
+                    type="button"
+                    className={fileFilter === "all" ? "filter-active" : ""}
+                    onClick={() => setFileFilter("all")}
+                  >
+                    All
+                  </button>
+
+                  <button
+                    type="button"
+                    className={fileFilter === "images" ? "filter-active" : ""}
+                    onClick={() => setFileFilter("images")}
+                  >
+                    Images
+                  </button>
+
+                  <button
+                    type="button"
+                    className={fileFilter === "videos" ? "filter-active" : ""}
+                    onClick={() => setFileFilter("videos")}
+                  >
+                    Videos
+                  </button>
+
+                  <button
+                    type="button"
+                    className={fileFilter === "documents" ? "filter-active" : ""}
+                    onClick={() => setFileFilter("documents")}
+                  >
+                    Documents
+                  </button>
+                </div>
+              </div>
               {attachmentsLoading ? (
                 <p>Loading your uploaded files...</p>
-              ) : (uploadedFiles[selectedEvent.eventId] || []).length === 0 ? (
-                <p>No files uploaded for this event yet.</p>
+              ) : filteredUploadedFiles.length === 0 ? (
+                <p>
+                  {currentFiles.length === 0
+                    ? "No files uploaded for this event yet."
+                    : "No files found in this category."}
+                </p>
               ) : (
                 <div className="uploaded-files-grid">
-                  {(uploadedFiles[selectedEvent.eventId] || []).map((file) => (
+                  {filteredUploadedFiles.map((file) => (
                     <div className="uploaded-file-card" key={file.objectKey}>
 
 
@@ -494,6 +1451,14 @@ function App() {
                         >
                           Download
                         </button>
+
+                        <button
+                          type="button"
+                          className="delete-file-btn"
+                          onClick={() => handleDeleteAttachment(file)}
+                        >
+                          Delete
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -502,13 +1467,79 @@ function App() {
             </div>
 
 
-            <div className="empty-memories">
-              <div className="empty-icon">▧</div>
-              <h3>Your memories will live here</h3>
-              <p>
-                Photos, videos, documents and written memories
-                will be added in a later step.
-              </p>
+            {/* WRITTEN MEMORIES */}
+            <div className="written-memories-section">
+              <div className="section-heading">
+                <div>
+                  <h3>Written memories</h3>
+                  <p>Save the stories behind your special moments.</p>
+                </div>
+
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={() => openMemoryForm()}
+                >
+                  + Add memory
+                </button>
+              </div>
+
+              {memoryMessage && (
+                <p role="status" style={{ color: "green" }}>
+                  {memoryMessage}
+                </p>
+              )}
+
+              {memoryError && (
+                <p role="alert" style={{ color: "crimson" }}>
+                  {memoryError}
+                </p>
+              )}
+
+              {memoriesLoading ? (
+                <p>Loading written memories...</p>
+              ) : (writtenMemories[selectedEvent.eventId] || []).length === 0 ? (
+                <div className="empty-memories">
+                  <div className="empty-icon">▧</div>
+                  <h3>No written memories yet</h3>
+                  <p>Add your first story for this event.</p>
+                </div>
+              ) : (
+                <div className="written-memories-list">
+                  {(writtenMemories[selectedEvent.eventId] || []).map(
+                    (memory) => (
+                      <article
+                        className="written-memory-card"
+                        key={memory.memoryId}
+                      >
+                        <h4>{memory.title}</h4>
+
+                        <p style={{ whiteSpace: "pre-wrap" }}>
+                          {memory.content}
+                        </p>
+
+                        <div className="written-memory-actions">
+                          <button
+                            type="button"
+                            onClick={() => openMemoryForm(memory)}
+                          >
+                            Edit
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleDeleteMemory(memory.memoryId)
+                            }
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </article>
+                    )
+                  )}
+                </div>
+              )}
             </div>
           </section>
         ) : (
@@ -561,11 +1592,29 @@ function App() {
 
                     <div className="event-footer">
                       <span>♡ {event.memories} memories</span>
+
                       <button
                         className="view-button"
                         onClick={() => setSelectedEvent(event)}
                       >
                         View event →
+                      </button>
+                    </div>
+
+                    <div className="event-management-actions">
+                      <button
+                        type="button"
+                        onClick={() => openEditEvent(event)}
+                      >
+                        Edit
+                      </button>
+
+                      <button
+                        type="button"
+                        className="delete-file-btn"
+                        onClick={() => handleDeleteEvent(event)}
+                      >
+                        Delete event
                       </button>
                     </div>
                   </div>
@@ -598,7 +1647,9 @@ function App() {
             <div className="form-heading">
               <div>
                 <p className="eyebrow">START A NEW COLLECTION</p>
-                <h2>Create an event</h2>
+                <h2>
+                  {editingEventId ? "Edit event" : "Create an event"}
+                </h2>
               </div>
               <button
                 type="button"
@@ -677,12 +1728,104 @@ function App() {
                 className="primary-button"
                 disabled={saving}
               >
-                {saving ? "Saving..." : "Create event"}
+                {saving
+                  ? "Saving..."
+                  : editingEventId
+                    ? "Update event"
+                    : "Create event"}
               </button>
             </div>
           </form>
         </div>
       )}
+
+      {showMemoryForm && (
+        <div
+          className="modal-overlay"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget && !memorySaving) {
+              setShowMemoryForm(false);
+            }
+          }}
+        >
+          <form className="event-form" onSubmit={handleMemorySubmit}>
+            <div className="form-heading">
+              <div>
+                <p className="eyebrow">PRESERVE THE MOMENT</p>
+                <h2>
+                  {editingMemoryId ? "Edit memory" : "Add a written memory"}
+                </h2>
+              </div>
+
+              <button
+                type="button"
+                className="close-button"
+                disabled={memorySaving}
+                onClick={() => setShowMemoryForm(false)}
+              >
+                ×
+              </button>
+            </div>
+
+            <label>
+              Memory title
+              <input
+                required
+                maxLength={150}
+                placeholder="e.g. The best day with my friends"
+                value={memoryForm.title}
+                onChange={(e) =>
+                  setMemoryForm({
+                    ...memoryForm,
+                    title: e.target.value,
+                  })
+                }
+              />
+            </label>
+
+            <label>
+              Your story
+              <textarea
+                required
+                rows="7"
+                maxLength={10000}
+                placeholder="Write about what happened, how you felt, and what made this moment special..."
+                value={memoryForm.content}
+                onChange={(e) =>
+                  setMemoryForm({
+                    ...memoryForm,
+                    content: e.target.value,
+                  })
+                }
+              />
+            </label>
+
+            <div className="form-actions">
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={memorySaving}
+                onClick={() => setShowMemoryForm(false)}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="submit"
+                className="primary-button"
+                disabled={memorySaving}
+              >
+                {memorySaving
+                  ? "Saving..."
+                  : editingMemoryId
+                    ? "Update memory"
+                    : "Save memory"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
     </div>
   );
 }
