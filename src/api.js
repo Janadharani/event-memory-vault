@@ -148,3 +148,93 @@ export function getAttachmentViewUrl(eventId, attachmentId, download = false) {
 
   return request(`/uploads/view?${params.toString()}`);
 }
+
+export function deleteEventAttachment(eventId, attachmentId) {
+  return request(
+    `/events/${encodeURIComponent(eventId)}/attachments/${encodeURIComponent(attachmentId)}`,
+    {
+      method: "DELETE",
+    }
+  );
+}
+
+// -----------------------------------------
+// WRITTEN MEMORIES API
+// -----------------------------------------
+
+export function getEventMemories(eventId) {
+  return request(
+    `/events/${encodeURIComponent(eventId)}/memories`
+  );
+}
+
+export function createEventMemory(eventId, memory) {
+  return request(
+    `/events/${encodeURIComponent(eventId)}/memories`,
+    {
+      method: "POST",
+      body: JSON.stringify(memory),
+    }
+  );
+}
+
+export function updateEventMemory(eventId, memoryId, memory) {
+  return request(
+    `/events/${encodeURIComponent(eventId)}/memories/${encodeURIComponent(memoryId)}`,
+    {
+      method: "PUT",
+      body: JSON.stringify(memory),
+    }
+  );
+}
+
+export function deleteEventMemory(eventId, memoryId) {
+  return request(
+    `/events/${encodeURIComponent(eventId)}/memories/${encodeURIComponent(memoryId)}`,
+    {
+      method: "DELETE",
+    }
+  );
+}
+
+
+// ==========================================
+// EVENT SHARING
+// ==========================================
+
+// Create or retrieve an event sharing link.
+export function enableEventSharing(eventId) {
+  return request(
+    `/events/${encodeURIComponent(eventId)}/share`,
+    {
+      method: "POST",
+    }
+  );
+}
+
+// Revoke an existing event sharing link.
+export function disableEventSharing(eventId) {
+  return request(
+    `/events/${encodeURIComponent(eventId)}/share`,
+    {
+      method: "DELETE",
+    }
+  );
+}
+
+// Retrieve a shared event without Cognito authentication.
+export async function getSharedEvent(shareToken) {
+  const response = await fetch(
+    `${API_BASE_URL}/shared/${encodeURIComponent(shareToken)}`
+  );
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      data.message || "Unable to load shared event."
+    );
+  }
+
+  return data;
+}

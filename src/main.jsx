@@ -13,8 +13,18 @@ const cognitoDomain =
 const clientId = "25tv9fopn1j00jb11hsf73oiha";
 const logoutUri = "http://localhost:5173/";
 
+// Check whether the current URL is a public shared event.
+function isSharedEventPage() {
+  return /^\/shared\/[^/]+\/?$/.test(window.location.pathname);
+}
+
 function AuthenticatedApp() {
   const auth = useAuth();
+
+  // PUBLIC PAGE: Shared events do not require sign-in.
+  if (isSharedEventPage()) {
+    return <App />;
+  }
 
   if (auth.isLoading) {
     return <p>Loading your account...</p>;
@@ -24,6 +34,7 @@ function AuthenticatedApp() {
     return <p>Sign-in error: {auth.error.message}</p>;
   }
 
+  // PRIVATE PAGES: Require authentication.
   if (!auth.isAuthenticated) {
     return (
       <main style={{ padding: "40px", textAlign: "center" }}>
