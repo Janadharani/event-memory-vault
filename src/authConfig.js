@@ -5,7 +5,7 @@ const cognitoAuthConfig = {
 
   client_id: "25tv9fopn1j00jb11hsf73oiha",
 
-  redirect_uri: "http://localhost:5173/",
+  redirect_uri: "https://main.di9ptmt55173a.amplifyapp.com/",
 
   response_type: "code",
 
