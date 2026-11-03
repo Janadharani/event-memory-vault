@@ -1408,36 +1408,36 @@ function App() {
                   {filteredUploadedFiles.map((file) => (
                     <div className="uploaded-file-card" key={file.objectKey}>
 
+                      <div className="uploaded-file-thumb">
+                        {file.type?.startsWith("image/") && file.previewUrl ? (
+                          <img
+                            src={file.previewUrl}
+                            alt={file.name}
+                            className="uploaded-image-thumbnail"
+                            onClick={() => handleViewFile(file)}
+                          />
+                        ) : file.type?.startsWith("video/") && file.previewUrl ? (
+                          <video
+                            src={file.previewUrl}
+                            className="uploaded-video-thumbnail"
+                            controls
+                            preload="metadata"
+                          />
+                        ) : file.type === "application/pdf" && file.previewUrl ? (
+                          <iframe
+                            src={file.previewUrl}
+                            title={file.name}
+                            className="uploaded-pdf-preview"
+                          />
+                        ) : (
+                          <div className="uploaded-file-placeholder">
+                            {file.type?.startsWith("video/") ? "▶" :
+                              file.type === "application/pdf" ? "PDF" : "▤"}
+                          </div>
+                        )}
+                      </div>
 
-                      {file.type?.startsWith("image/") && file.previewUrl ? (
-                        <img
-                          src={file.previewUrl}
-                          alt={file.name}
-                          className="uploaded-image-thumbnail"
-                          onClick={() => handleViewFile(file)}
-                        />
-                      ) : file.type?.startsWith("video/") && file.previewUrl ? (
-                        <video
-                          src={file.previewUrl}
-                          className="uploaded-video-thumbnail"
-                          controls
-                          preload="metadata"
-                        />
-                      ) : file.type === "application/pdf" && file.previewUrl ? (
-                        <iframe
-                          src={file.previewUrl}
-                          title={file.name}
-                          className="uploaded-pdf-preview"
-                        />
-                      ) : (
-                        <div className="uploaded-file-placeholder">
-                          {file.type?.startsWith("video/") ? "▶" :
-                            file.type === "application/pdf" ? "PDF" : "▤"}
-                        </div>
-                      )}
-
-
-                      <strong>{file.name}</strong>
+                      <p className="uploaded-file-name">{file.name}</p>
 
                       <div className="uploaded-file-actions">
                         <button
