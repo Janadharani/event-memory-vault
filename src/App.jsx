@@ -308,28 +308,28 @@ function SharedEventPage({ shareToken }) {
                   (file) =>
                     getFileType(file) === "application/pdf" && getFileUrl(file)
                 ) && (
-                  <div className="shared-pdf-previews">
-                    {documents
-                      .filter(
-                        (file) =>
-                          getFileType(file) === "application/pdf" &&
-                          getFileUrl(file)
-                      )
-                      .map((file, index) => (
-                        <details
-                          className="shared-pdf-details"
-                          key={file.attachmentId || file.objectKey || index}
-                        >
-                          <summary>Preview: {getFileName(file)}</summary>
-                          <iframe
-                            src={getFileUrl(file)}
-                            title={getFileName(file)}
-                            className="shared-pdf-preview"
-                          />
-                        </details>
-                      ))}
-                  </div>
-                )}
+                    <div className="shared-pdf-previews">
+                      {documents
+                        .filter(
+                          (file) =>
+                            getFileType(file) === "application/pdf" &&
+                            getFileUrl(file)
+                        )
+                        .map((file, index) => (
+                          <details
+                            className="shared-pdf-details"
+                            key={file.attachmentId || file.objectKey || index}
+                          >
+                            <summary>Preview: {getFileName(file)}</summary>
+                            <iframe
+                              src={getFileUrl(file)}
+                              title={getFileName(file)}
+                              className="shared-pdf-preview"
+                            />
+                          </details>
+                        ))}
+                    </div>
+                  )}
               </section>
             )}
 
@@ -1330,24 +1330,26 @@ function App() {
               <h3>Add photos, videos or documents</h3>
               <p>Choose a file up to 10 MB.</p>
 
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/webp,video/mp4,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                onChange={(e) => {
-                  setSelectedFile(e.target.files?.[0] || null);
-                  setUploadError("");
-                  setUploadMessage("");
-                }}
-              />
+              <div className="upload-controls">
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,video/mp4,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  onChange={(e) => {
+                    setSelectedFile(e.target.files?.[0] || null);
+                    setUploadError("");
+                    setUploadMessage("");
+                  }}
+                />
 
-              <button
-                type="button"
-                className="primary-button"
-                onClick={handleFileUpload}
-                disabled={!selectedFile || uploading}
-              >
-                {uploading ? "Uploading..." : "Upload file"}
-              </button>
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={handleFileUpload}
+                  disabled={!selectedFile || uploading}
+                >
+                  {uploading ? "Uploading..." : "Upload file"}
+                </button>
+              </div>
 
               {uploadMessage && <p role="status">{uploadMessage}</p>}
               {uploadError && (
