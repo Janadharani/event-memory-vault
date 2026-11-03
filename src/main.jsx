@@ -3,6 +3,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./index.css";
+import "./App.css";
 
 import { AuthProvider, useAuth } from "react-oidc-context";
 import cognitoAuthConfig from "./authConfig";
@@ -37,13 +38,18 @@ function AuthenticatedApp() {
   // PRIVATE PAGES: Require authentication.
   if (!auth.isAuthenticated) {
     return (
-      <main style={{ padding: "40px", textAlign: "center" }}>
-        <h1>Event Memory Vault</h1>
-        <p>Sign in to access your event memories.</p>
-
-        <button onClick={() => auth.signinRedirect()}>
-          Sign in / Sign up
-        </button>
+      <main className="signin-page">
+        <div className="signin-card">
+          <div className="signin-brand">
+            <div className="brand-icon">M</div>
+            <span>MemoryVault</span>
+          </div>
+          <h1 className="signin-title">Event Memory Vault</h1>
+          <p className="signin-subtitle">Sign in to access your event memories.</p>
+          <button className="primary-button signin-btn" onClick={() => auth.signinRedirect()}>
+            Sign in / Sign up
+          </button>
+        </div>
       </main>
     );
   }
@@ -52,18 +58,11 @@ function AuthenticatedApp() {
 
   return (
     <>
-      <header
-        style={{
-          display: "flex",
-          justifyContent: "flex-end",
-          alignItems: "center",
-          gap: "16px",
-          padding: "12px 24px",
-        }}
-      >
-        <span>{email || "Signed in"}</span>
+      <header className="auth-topbar">
+        <span className="auth-email">{email || "Signed in"}</span>
 
         <button
+          className="signout-button"
           onClick={() => {
             auth.removeUser();
 
